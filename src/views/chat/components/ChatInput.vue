@@ -33,19 +33,9 @@
             <button class="attach-btn" @click.stop="toggleAttachPopover" title="添加附件">
               <el-icon><Plus /></el-icon>
             </button>
-            <div
-              class="attach-popover floating-dropdown-panel"
-              :class="{ 'is-open': isAttachPopoverOpen }"
-            >
+            <div class="attach-popover floating-dropdown-panel" :class="{ 'is-open': isAttachPopoverOpen }">
               <!-- 修改：使用 el-upload 触发本地上传 -->
-              <el-upload
-                ref="uploadRef"
-                :auto-upload="false"
-                :show-file-list="false"
-                :on-change="handleFileChange"
-                accept=".doc,.docx,.pdf,.txt,.jpg,.png,.jpeg"
-                style="display: inline-block; width: 100%"
-              >
+              <el-upload ref="uploadRef" :auto-upload="false" :show-file-list="false" :on-change="handleFileChange" accept=".doc,.docx,.pdf,.txt,.jpg,.png,.jpeg" style="display: inline-block; width: 100%">
                 <button class="popover-item">
                   <el-icon><Upload /></el-icon>
                   本地上传
@@ -60,15 +50,7 @@
           </div>
 
           <!-- 输入框 -->
-          <input
-            ref="inputRef"
-            v-model="inputText"
-            type="text"
-            class="chat-input-field"
-            :placeholder="inputPlaceholder"
-            @keyup.enter="handleSend"
-            @focus="handleFocus"
-          />
+          <input ref="inputRef" v-model="inputText" type="text" class="chat-input-field" :placeholder="inputPlaceholder" @keyup.enter="handleSend" @focus="handleFocus" />
 
           <!-- 模型选择 -->
           <div ref="modelWrapperRef" class="model-select-wrapper" @click.stop>
@@ -79,18 +61,8 @@
               </span>
               <el-icon class="chevron"><ArrowDown /></el-icon>
             </button>
-            <div
-              class="model-dropdown floating-dropdown-panel"
-              :class="{ 'is-open': isModelDropdownOpen }"
-            >
-              <div
-                v-for="model in modelOptions"
-                :key="model.key"
-                class="model-option"
-                :class="{ selected: selectedModel === model.key }"
-                @click.stop="selectModel(model)"
-                :title="model.label"
-              >
+            <div class="model-dropdown floating-dropdown-panel" :class="{ 'is-open': isModelDropdownOpen }">
+              <div v-for="model in modelOptions" :key="model.key" class="model-option" :class="{ selected: selectedModel === model.key }" @click.stop="selectModel(model)" :title="model.label">
                 <span class="model-option-label">{{ model.label }}</span>
                 <el-icon class="check-icon"><Check /></el-icon>
               </div>
@@ -114,7 +86,6 @@
             class="claw-chip"
             :class="{
               active: selectedSkill === skill.id,
-              disabled: skill.id !== 'retrieval' && skill.id !== 'writing',
             }"
             @click="selectSkill(skill)"
           >
@@ -132,22 +103,7 @@
 <script setup lang="ts">
 import { listModels, listSkills } from '@/api';
 import { useUserStore } from '@/stores/user';
-import {
-  ArrowDown,
-  ChatLineRound,
-  Check,
-  Close,
-  Document,
-  DocumentChecked,
-  DocumentCopy,
-  EditPen,
-  MagicStick,
-  MostlyCloudy,
-  Plus,
-  Promotion,
-  Search,
-  Upload,
-} from '@element-plus/icons-vue';
+import { ArrowDown, ChatLineRound, Check, Close, Document, DocumentChecked, DocumentCopy, EditPen, MagicStick, MostlyCloudy, Plus, Promotion, Search, Upload } from '@element-plus/icons-vue';
 import type { UploadUserFile } from 'element-plus';
 import { computed, markRaw, onMounted, onUnmounted, ref, type Component } from 'vue';
 
@@ -191,23 +147,17 @@ const modelOptions = ref<Array<{ key: string; label: string }>>([]);
 const skills = ref<Skill[]>([]);
 
 const skillIconMap: SkillIconMap = {
-  retrieval: markRaw(Search),
-  writing: markRaw(EditPen),
-  review: markRaw(DocumentChecked),
-  dedup: markRaw(DocumentCopy),
-  layout: markRaw(MagicStick),
+  公文写作: markRaw(EditPen),
+  公文检索: markRaw(Search),
+  公文审核: markRaw(DocumentChecked),
+  公文去重: markRaw(DocumentCopy),
+  公文排版: markRaw(MagicStick),
 };
 
-const selectedSkillMeta = computed(
-  () => skills.value.find((s) => s.id === selectedSkill.value) || null
-);
-const selectedModelLabel = computed(
-  () => modelOptions.value.find((m) => m.key === selectedModel.value)?.label || selectedModel.value
-);
+const selectedSkillMeta = computed(() => skills.value.find((s) => s.id === selectedSkill.value) || null);
+const selectedModelLabel = computed(() => modelOptions.value.find((m) => m.key === selectedModel.value)?.label || selectedModel.value);
 
-const inputPlaceholder = computed(() =>
-  selectedSkillMeta.value ? `例如：${selectedSkillMeta.value.example}` : '有什么我能帮你的吗？'
-);
+const inputPlaceholder = computed(() => (selectedSkillMeta.value && selectedSkillMeta.value.example ? `例如：${selectedSkillMeta.value.example}` : '有什么我能帮你的吗？'));
 
 const toggleAttachPopover = () => {
   isAttachPopoverOpen.value = !isAttachPopoverOpen.value;
@@ -220,7 +170,7 @@ const loadSkillOptions = async () => {
     skills.value = items.map((item) => ({
       id: item.key,
       name: item.title,
-      example: item.examples ? item.examples[0] : '',
+      example: item.examples && item.examples.length > 0 ? item.examples[0] : '',
       icon: skillIconMap[item.key] || markRaw(MagicStick),
     }));
   } catch (error) {
@@ -232,8 +182,8 @@ const loadModelOptions = async () => {
   try {
     const items = await listModels();
     modelOptions.value = items.map((item) => ({
-      key: item.modelName,
-      label: item.modelDisplayName,
+      key: item.modelId,
+      label: item.name,
     }));
   } catch (error) {
     console.error('加载模型列表失败:', error);
@@ -256,14 +206,12 @@ const selectModel = (model: { key: string; label: string }) => {
 };
 
 const selectSkill = (skill: Skill) => {
-  if (skill.id === 'retrieval' || skill.id === 'writing') {
-    if (selectedSkill.value === skill.id) {
-      selectedSkill.value = null;
-    } else {
-      selectedSkill.value = skill.id;
-    }
-    emit('skill-select', selectedSkillMeta.value?.id || null);
+  if (selectedSkill.value === skill.id) {
+    selectedSkill.value = null;
+  } else {
+    selectedSkill.value = skill.id;
   }
+  emit('skill-select', selectedSkillMeta.value?.id || null);
 };
 
 const clearSkill = () => {
@@ -659,6 +607,8 @@ onUnmounted(() => {
   box-shadow: var(--shadow-3);
   padding: 4px;
   min-width: 168px;
+  max-height: 280px;
+  overflow-y: auto;
   z-index: var(--dropdown-z-index);
 }
 

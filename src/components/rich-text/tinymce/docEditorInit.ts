@@ -177,8 +177,8 @@ export function createDocEditorInit(
     toolbar_mode: 'wrap',
     base_url: getTinymceBaseUrl(),
     suffix: '.min',
-    plugins: 'lists autoresize link',
-    toolbar: 'styles | bold bullist numlist | fontfamily fontsize',
+    plugins: 'lists autoresize link searchreplace',
+    toolbar: 'styles | bold bullist numlist | fontfamily fontsize | searchreplace',
     fontsize_formats: '12pt 14pt 16pt 18pt 20pt',
     font_family_formats:
       '仿宋_GB2312=FangSong_GB2312,FangSong,STFangsong,serif;宋体=SimSun,serif;黑体=SimHei,sans-serif;楷体=KaiTi,serif;微软雅黑=Microsoft YaHei,sans-serif',
@@ -193,7 +193,20 @@ export function createDocEditorInit(
     min_height: 280,
     autoresize_bottom_margin: 16,
     resize: true,
-    content_style: DOC_CONTENT_STYLE,
+    content_style: `${DOC_CONTENT_STYLE_PANEL}
+      .mce-match-marker {
+        background: #ffeb3b;
+        color: inherit;
+        padding: 1px 3px;
+        border-radius: 4px;
+        box-decoration-break: clone;
+        -webkit-box-decoration-break: clone;
+      }
+      .mce-match-marker-selected {
+        background: #f44336;
+        color: white;
+      }
+    `,
     contextmenu: false,
     ...overrides,
   };

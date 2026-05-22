@@ -1,7 +1,7 @@
 /**
  * 会话集合 Store（options 写法，保证 actions 在运行时可调用，避免 setup store 在部分环境下方法丢失）。
  */
-import { deleteConversation, listConversations, updateConversation } from '@/api';
+import { deleteConversation, listConversations, updateConversation, createConversation } from '@/api';
 import { defineStore } from 'pinia';
 
 const LOCAL_SESSIONS_CACHE_KEY = 'chat_local_sessions_v1';
@@ -48,11 +48,7 @@ export const useSessionStore = defineStore('session', {
           (localItem) => !remoteList.some((remoteItem) => remoteItem.id === localItem.id)
         );
         const list = [...localOnly, ...remoteList];
-        list.sort((a, b) => {
-          if (a.pinned && !b.pinned) return -1;
-          if (!a.pinned && b.pinned) return 1;
-          return 0;
-        });
+        this.sortSessions(list);
         this.sessions = list;
         writeLocalSessions(this.sessions);
       } catch {
@@ -87,6 +83,35 @@ export const useSessionStore = defineStore('session', {
       }
     },
 
+    async createSession(title: string): Promise<string> {
+      try {
+        const result = await createConversation({ title });
+        const session: ChatSession = {
+          id: result.id,
+          title: result.title,
+          pinned: false,
+          createdAt: result.createdAt,
+          updatedAt: result.createdAt,
+        };
+        this.sessions.unshift(session);
+        writeLocalSessions(this.sessions);
+        return result.id;
+      } catch {
+        // 本地回退
+        const id = `local-${Date.now()}`;
+        const session: ChatSession = {
+          id,
+          title,
+          pinned: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        };
+        this.sessions.unshift(session);
+        writeLocalSessions(this.sessions);
+        return id;
+      }
+    },
+
     async renameSession(sessionId: string, title: string): Promise<void> {
       const item = this.findSession(sessionId);
       if (!item) return;
@@ -109,11 +134,7 @@ export const useSessionStore = defineStore('session', {
         // local-only fallback session has no backend; keep local pin state.
       }
       item.pinned = next;
-      this.sessions.sort((a, b) => {
-        if (a.pinned && !b.pinned) return -1;
-        if (!a.pinned && b.pinned) return 1;
-        return 0;
-      });
+      this.sortSessions(this.sessions);
       writeLocalSessions(this.sessions);
       return next;
     },
@@ -127,6 +148,15 @@ export const useSessionStore = defineStore('session', {
       const idx = this.sessions.findIndex((s) => s.id === sessionId);
       if (idx > -1) this.sessions.splice(idx, 1);
       writeLocalSessions(this.sessions);
+    },
+
+    sortSessions(list?: ChatSession[]) {
+      const target = list || this.sessions;
+      target.sort((a, b) => {
+        if (a.pinned && !b.pinned) return -1;
+        if (!a.pinned && b.pinned) return 1;
+        return 0;
+      });
     },
 
     requestReset() {

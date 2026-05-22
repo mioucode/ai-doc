@@ -1,21 +1,21 @@
-import axios from 'axios'
 import { getBspLoginUrl, getLoginStatus } from '@/api/auth'
+import axios from 'axios'
 
 /**
- * Legacy 鉴权头：
- * - 必填：X-Legacy-User-Id / X-Legacy-Account / X-Legacy-Name
- * - 可选：X-Legacy-Org-Name / X-Legacy-Org-Code
- *
- * 所有值仅来源于 getLoginStatus() 返回的 user 字段：
- *   - X-Legacy-User-Id  <- user.ID
- *   - X-Legacy-Account  <- user.ACCOUNT
- *   - X-Legacy-Name     <- user.NAME
- *   - X-Legacy-Org-Name <- user.ORG_NAME
- *   - X-Legacy-Org-Code <- user.ORG_CODE
+ * 请求头配置：
+ * - 必填：X-Agent-Id（Agent 标识）
+ * - 可选：Authorization（Bearer Token，启用 Web 认证时使用）
+ * - 兼容：X-Legacy-*（旧版鉴权头，通过环境变量控制）
  */
 const LEGACY_HEADERS_CACHE_KEY = 'legacy_auth_headers'
 let legacyHeadersCache: Record<string, string> | null = null
 let legacyHeadersLoading: Promise<Record<string, string> | null> | null = null
+
+// 默认 AgentId，可通过环境变量覆盖
+const DEFAULT_AGENT_ID = import.meta.env.VITE_AGENT_ID || 'default'
+
+// 是否启用旧版鉴权头（默认启用以保持兼容）
+const USE_LEGACY_AUTH = import.meta.env.VITE_USE_LEGACY_AUTH_HEADER !== 'false'
 
 /**
  * 浏览器 XHR 要求 header value 必须是 ISO-8859-1 可表示字符。
@@ -77,6 +77,7 @@ function buildLegacyAuthHeadersFromUser(user: Record<string, unknown> | null): R
   if (!userId || !account || !name) return null
 
   const headers: Record<string, string> = {
+    'X-Agent-Id': DEFAULT_AGENT_ID,
     'X-Legacy-User-Id': toSafeHeaderValue(userId),
     'X-Legacy-Account': toSafeHeaderValue(account),
     'X-Legacy-Name': toSafeHeaderValue(name),
@@ -87,6 +88,7 @@ function buildLegacyAuthHeadersFromUser(user: Record<string, unknown> | null): R
 }
 
 async function ensureLegacyAuthHeaders(): Promise<Record<string, string> | null> {
+  if (!USE_LEGACY_AUTH) return null
   if (legacyHeadersCache) return legacyHeadersCache
   const fromSession = readLegacyHeadersCache()
   if (fromSession) {
@@ -122,19 +124,29 @@ const request = axios.create({
   withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
+    'X-Agent-Id': DEFAULT_AGENT_ID,
   },
 })
 
 request.interceptors.request.use(
   async (config) => {
+    // 确保 X-Agent-Id 存在
+    if (!config.headers['X-Agent-Id']) {
+      config.headers['X-Agent-Id'] = DEFAULT_AGENT_ID
+    }
+
+    // Bearer Token（如启用 Web 认证）
     const token = localStorage.getItem('token')
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
+    // 兼容旧版鉴权头
     const legacy = await ensureLegacyAuthHeaders()
     if (legacy) {
       Object.assign(config.headers, legacy)
     }
+
     return config
   },
   (error) => {
@@ -145,7 +157,9 @@ request.interceptors.request.use(
 request.interceptors.response.use(
   (response) => {
     const { data } = response
-    if (data.code === 0) {
+    // 统一响应格式：{ code, message, data }
+    // code === 0 或 code === 200 视为成功
+    if (data.code === 0 || data.code === 200) {
       return data
     }
     return Promise.reject(new Error(data.message || '请求失败'))

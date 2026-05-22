@@ -17,6 +17,7 @@
     "docx-preview": "^0.3.5",
     "echarts": "^6.0.0",
     "element-plus": "^2.13.6",
+    "marked": "^18.0.4",
     "pinia": "^3.0.3",
     "pinia-plugin-persistedstate": "^4.5.0",
     "tinymce": "^7.9.2",

@@ -1,5 +1,12 @@
 import type { InjectionKey, Ref } from 'vue';
 
+export interface MaterialItem {
+  title: string;
+  description?: string;
+  content?: string;
+  url?: string;
+}
+
 export interface LinkedEditorHost {
   open: (step: Step) => void;
   close: () => void;
@@ -8,4 +15,12 @@ export interface LinkedEditorHost {
   isOpen: Ref<boolean>;
 }
 
+export interface MaterialPreviewHost {
+  open: (material: MaterialItem) => void;
+  close: () => void;
+  activeMaterial: Ref<MaterialItem | null>;
+  isOpen: Ref<boolean>;
+}
+
 export const LINKED_EDITOR_KEY: InjectionKey<LinkedEditorHost> = Symbol('policeBrainLinkedEditor');
+export const MATERIAL_PREVIEW_KEY: InjectionKey<MaterialPreviewHost> = Symbol('policeBrainMaterialPreview');

@@ -11,16 +11,8 @@
               <span>新建</span>
               <el-icon class="chevron"><ArrowDown /></el-icon>
             </button>
-            <div
-              class="cd-dropdown create-dropdown floating-dropdown-panel"
-              :class="{ 'is-open': isCreateDropdownOpen }"
-            >
-              <div
-                v-for="option in createOptions"
-                :key="option.id"
-                class="cd-dropdown-item"
-                @click.stop="handleCreate(option.id)"
-              >
+            <div class="cd-dropdown create-dropdown floating-dropdown-panel" :class="{ 'is-open': isCreateDropdownOpen }">
+              <div v-for="option in createOptions" :key="option.id" class="cd-dropdown-item" @click.stop="handleCreate(option.id)">
                 <el-icon><component :is="option.icon" /></el-icon>
                 <span>{{ option.label }}</span>
               </div>
@@ -59,41 +51,38 @@
       <div class="cd-table">
         <div class="cd-thead">
           <div class="cd-th col-name">名称</div>
-          <div class="cd-th col-owner">所有者</div>
-          <div class="cd-th col-opened">最近打开</div>
+          <div class="cd-th col-type">类型</div>
+          <div class="cd-th col-modified">修改时间</div>
           <div class="cd-th col-action"></div>
         </div>
         <div class="cd-tbody">
-          <div v-for="item in currentFiles" :key="item.id" class="cd-row" :class="{ 'menu-open': openActionMenuId === item.id }" @click="handleRowClick(item)">
-            <div class="cd-td col-name">
-              <span class="file-icon" :class="`icon-${item.type}`">
-                <el-icon v-if="item.type === 'folder'"><FolderOpened /></el-icon>
-                <el-icon v-else><Document /></el-icon>
-              </span>
-              <span class="file-name">{{ item.name }}</span>
-            </div>
-            <div class="cd-td col-owner">{{ item.owner }}</div>
-            <div class="cd-td col-opened">{{ item.openedAt }}</div>
-            <div class="cd-td col-action" @click.stop>
-              <button class="row-action-btn" type="button" :aria-expanded="openActionMenuId === item.id" @click.stop="toggleActionMenu(item.id, $event)">···</button>
-              <div
-                class="cd-dropdown action-dropdown floating-dropdown-panel"
-                :class="{ 'is-open': openActionMenuId === item.id }"
-              >
-                <div
-                  v-for="action in rowActions"
-                  :key="action.id"
-                  class="cd-dropdown-item"
-                  :class="{ danger: action.danger, disabled: isActionDisabled(action.id) }"
-                  @click.stop="handleRowAction(action.id, item)"
-                >
-                  <el-icon><component :is="action.icon" /></el-icon>
-                  <span>{{ action.label }}</span>
+          <div v-if="loading" class="cd-loading">
+            <el-icon class="is-loading"><Loading /></el-icon>
+            <span>加载中...</span>
+          </div>
+          <template v-else>
+            <div v-for="item in currentFiles" :key="item.id" class="cd-row" :class="{ 'menu-open': openActionMenuId === item.id }" @click="handleRowClick(item)">
+              <div class="cd-td col-name">
+                <span class="file-icon" :class="`icon-${item.type}`">
+                  <el-icon v-if="item.type === 'folder'"><FolderOpened /></el-icon>
+                  <el-icon v-else><Document /></el-icon>
+                </span>
+                <span class="file-name">{{ item.name }}</span>
+              </div>
+              <div class="cd-td col-type">{{ item.type === 'folder' ? '文件夹' : '文件' }}</div>
+              <div class="cd-td col-modified">{{ item.modifiedAt || '-' }}</div>
+              <div class="cd-td col-action" @click.stop>
+                <button class="row-action-btn" type="button" :aria-expanded="openActionMenuId === item.id" @click.stop="toggleActionMenu(item.id, $event)">···</button>
+                <div class="cd-dropdown action-dropdown floating-dropdown-panel" :class="{ 'is-open': openActionMenuId === item.id }">
+                  <div v-for="action in rowActions" :key="action.id" class="cd-dropdown-item" :class="{ danger: action.danger, disabled: isActionDisabled(action.id, item) }" @click.stop="handleRowAction(action.id, item)">
+                    <el-icon><component :is="action.icon" /></el-icon>
+                    <span>{{ action.label }}</span>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div v-if="!currentFiles.length" class="cd-empty">暂无文件</div>
+            <div v-if="!currentFiles.length && !loading" class="cd-empty">暂无文件</div>
+          </template>
         </div>
       </div>
     </div>
@@ -117,17 +106,11 @@
 </template>
 
 <script setup lang="ts">
-import { ArrowDown, ArrowRight, ChatDotRound, Delete, Document, Download, EditPen, Filter, FolderOpened, Plus, Rank, Upload } from '@element-plus/icons-vue';
+import type { WorkspaceFileItem } from '@/api/workspace';
+import { createDocument, createFolder, deleteNode, downloadFile, getWorkspaceFileList, renameNode, sendToConversation, uploadFile } from '@/api/workspace';
+import { ArrowDown, ArrowRight, ChatDotRound, Delete, Document, Download, EditPen, Filter, FolderOpened, Loading, Plus, Rank, Upload } from '@element-plus/icons-vue';
 import { ElMessage, ElMessageBox, type UploadFile } from 'element-plus';
 import { computed, markRaw, nextTick, onMounted, onUnmounted, reactive, ref, type Component } from 'vue';
-
-interface CloudFile {
-  id: string;
-  name: string;
-  type: 'doc' | 'folder';
-  owner: string;
-  openedAt: string;
-}
 
 interface CreateOption {
   id: 'docx' | 'folder';
@@ -144,7 +127,7 @@ interface RowAction {
 }
 
 const emit = defineEmits<{
-  'file-open': [file: CloudFile];
+  'file-open': [file: WorkspaceFileItem];
 }>();
 
 const tabs = [
@@ -154,23 +137,12 @@ const tabs = [
 ];
 
 const activeTab = ref<string>('recent');
+const loading = ref(false);
 
-const recentFiles = ref<CloudFile[]>([
-  { id: '1', name: '关于开会的通知', type: 'doc', owner: '张三', openedAt: '3月23日 16:36' },
-  { id: '2', name: '2025年度材料', type: 'folder', owner: '张三', openedAt: '3月22日 09:10' },
-  { id: '3', name: '2025年工作计划', type: 'doc', owner: '张三', openedAt: '3月21日 14:05' },
-  { id: '4', name: '党建活动总结报告', type: 'doc', owner: '张三', openedAt: '3月20日 11:30' },
-]);
-
-const myFiles = ref<CloudFile[]>([
-  { id: 'm1', name: '我的工作记录', type: 'doc', owner: '我', openedAt: '3月25日 09:20' },
-  { id: 'm2', name: '个人素材', type: 'folder', owner: '我', openedAt: '3月24日 18:05' },
-]);
-
-const aiFiles = ref<CloudFile[]>([
-  { id: 'a1', name: 'AI生成-年度工作总结', type: 'doc', owner: 'AI', openedAt: '3月25日 14:12' },
-  { id: 'a2', name: 'AI生成-政策解读', type: 'doc', owner: 'AI', openedAt: '3月24日 10:30' },
-]);
+// 文件列表数据
+const recentFiles = ref<WorkspaceFileItem[]>([]);
+const myFiles = ref<WorkspaceFileItem[]>([]);
+const aiFiles = ref<WorkspaceFileItem[]>([]);
 
 const currentFiles = computed(() => {
   if (activeTab.value === 'mine') return myFiles.value;
@@ -235,15 +207,18 @@ const createOptions: CreateOption[] = [
 ];
 
 const rowActions: RowAction[] = [
-  { id: 'move-chat', label: '移至对话', icon: markRaw(ChatDotRound), disabled: true },
+  { id: 'move-chat', label: '移至对话', icon: markRaw(ChatDotRound) },
   { id: 'move', label: '移动', icon: markRaw(Rank), disabled: true },
   { id: 'download', label: '下载', icon: markRaw(Download) },
-  { id: 'rename', label: '重命名', icon: markRaw(EditPen), disabled: true },
+  { id: 'rename', label: '重命名', icon: markRaw(EditPen) },
   { id: 'delete', label: '删除', icon: markRaw(Delete), danger: true },
 ];
 
-const isActionDisabled = (actionId: RowAction['id']) =>
-  actionId !== 'download' && actionId !== 'delete';
+const isActionDisabled = (actionId: RowAction['id'], item: WorkspaceFileItem) => {
+  if (actionId === 'move') return true;
+  if (actionId === 'move-chat' && item.type === 'folder') return true;
+  return false;
+};
 
 const toggleCreateDropdown = (event: Event) => {
   event.stopPropagation();
@@ -257,39 +232,83 @@ const toggleActionMenu = (id: string, event?: MouseEvent) => {
   isCreateDropdownOpen.value = false;
 };
 
-const genId = () => `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-
-const formatNow = () => {
-  const now = new Date();
-  const m = now.getMonth() + 1;
-  const d = now.getDate();
-  const hh = String(now.getHours()).padStart(2, '0');
-  const mm = String(now.getMinutes()).padStart(2, '0');
-  return `${m}月${d}日 ${hh}:${mm}`;
+const formatDateTime = (dateStr?: string): string => {
+  if (!dateStr) return '-';
+  try {
+    const date = new Date(dateStr);
+    const m = date.getMonth() + 1;
+    const d = date.getDate();
+    const hh = String(date.getHours()).padStart(2, '0');
+    const mm = String(date.getMinutes()).padStart(2, '0');
+    return `${m}月${d}日 ${hh}:${mm}`;
+  } catch {
+    return dateStr;
+  }
 };
+
+// 加载工作空间数据
+const loadWorkspaceData = async () => {
+  loading.value = true;
+  try {
+    const data = await getWorkspaceFileList({});
+    recentFiles.value = data.map((item) => ({
+      ...item,
+      modifiedAt: formatDateTime(item.modifiedAt),
+    }));
+    // TODO: 根据 type 或 meta 区分"我的"和"AI文档"
+    myFiles.value = data
+      .filter((item) => item.type === 'file')
+      .map((item) => ({
+        ...item,
+        modifiedAt: formatDateTime(item.modifiedAt),
+      }));
+    aiFiles.value = [];
+  } catch (error) {
+    console.error('加载工作空间失败:', error);
+    ElMessage.error('加载失败，请重试');
+  } finally {
+    loading.value = false;
+  }
+};
+
+onMounted(() => {
+  loadWorkspaceData();
+});
 
 const handleCreate = async (id: CreateOption['id']) => {
   isCreateDropdownOpen.value = false;
   const isFolder = id === 'folder';
   const title = isFolder ? '新建文件夹' : '新建docx文档';
-  const placeholder = isFolder ? '新建文件夹' : '新建docx文档';
-  const name = await openPrompt({ title, placeholder });
+  const name = await openPrompt({ title, placeholder: title });
   if (!name) return;
-  const newItem: CloudFile = {
-    id: genId(),
-    name,
-    type: isFolder ? 'folder' : 'doc',
-    owner: '我',
-    openedAt: formatNow(),
-  };
-  recentFiles.value.unshift(newItem);
-  myFiles.value.unshift(newItem);
-  ElMessage.success(isFolder ? '已新建文件夹' : '已新建 docx 文档');
+
+  try {
+    if (isFolder) {
+      await createFolder({ folder_name: name, parent_dir: null });
+    } else {
+      await createDocument({
+        file_name: name,
+        parent_dir: null,
+        source: 'manual',
+      });
+    }
+    ElMessage.success(isFolder ? '已新建文件夹' : '已新建 docx 文档');
+    loadWorkspaceData();
+  } catch (error) {
+    console.error('创建失败:', error);
+    ElMessage.error('创建失败，请重试');
+  }
 };
 
-const handleUploadChange = (file: UploadFile) => {
-  if (file && file.name) {
+const handleUploadChange = async (file: UploadFile) => {
+  if (!file?.raw) return;
+  try {
+    await uploadFile(file.raw);
     ElMessage.success(`已上传：${file.name}`);
+    loadWorkspaceData();
+  } catch (error) {
+    console.error('上传失败:', error);
+    ElMessage.error('上传失败，请重试');
   }
 };
 
@@ -297,22 +316,41 @@ const handleFilter = () => {
   ElMessage.info('筛选功能开发中');
 };
 
-const handleRowClick = (item: CloudFile) => {
+const handleRowClick = (item: WorkspaceFileItem) => {
   emit('file-open', item);
 };
 
-const handleRowAction = async (actionId: RowAction['id'], item: CloudFile) => {
-  if (isActionDisabled(actionId)) return;
+const handleRowAction = async (actionId: RowAction['id'], item: WorkspaceFileItem) => {
+  if (isActionDisabled(actionId, item)) return;
   openActionMenuId.value = null;
+
   switch (actionId) {
     case 'move-chat':
-      ElMessage.success(`已将「${item.name}」移至对话`);
+      try {
+        await sendToConversation(item.id);
+        ElMessage.success(`已将「${item.name}」移至对话`);
+      } catch (error) {
+        console.error('移至对话失败:', error);
+        ElMessage.error('操作失败，请重试');
+      }
       break;
     case 'move':
       ElMessage.info(`移动：${item.name}`);
       break;
     case 'download':
-      ElMessage.success(`开始下载：${item.name}`);
+      try {
+        const blob = await downloadFile(item.id);
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = item.name;
+        a.click();
+        URL.revokeObjectURL(url);
+        ElMessage.success(`开始下载：${item.name}`);
+      } catch (error) {
+        console.error('下载失败:', error);
+        ElMessage.error('下载失败，请重试');
+      }
       break;
     case 'rename': {
       const name = await openPrompt({
@@ -321,8 +359,14 @@ const handleRowAction = async (actionId: RowAction['id'], item: CloudFile) => {
         initialValue: item.name,
       });
       if (name) {
-        item.name = name;
-        ElMessage.success('重命名成功');
+        try {
+          await renameNode(item.id, name);
+          item.name = name;
+          ElMessage.success('重命名成功');
+        } catch (error) {
+          console.error('重命名失败:', error);
+          ElMessage.error('重命名失败，请重试');
+        }
       }
       break;
     }
@@ -333,13 +377,15 @@ const handleRowAction = async (actionId: RowAction['id'], item: CloudFile) => {
           cancelButtonText: '取消',
           type: 'warning',
         });
+        await deleteNode(item.id);
+        // 从所有列表中移除
         for (const list of [recentFiles.value, myFiles.value, aiFiles.value]) {
           const idx = list.findIndex((f) => f.id === item.id);
           if (idx > -1) list.splice(idx, 1);
         }
         ElMessage.success('删除成功');
       } catch {
-        /* user cancelled */
+        // 用户取消
       }
       break;
   }
@@ -552,7 +598,7 @@ onUnmounted(() => {
   }
 }
 
-/* 统一下拉浮层：样式与 ChatInput 的 model-dropdown 一致 */
+/* 统一下拉浮层 */
 .cd-dropdown {
   background: var(--surface);
   border: 1px solid var(--outline);
@@ -638,6 +684,20 @@ onUnmounted(() => {
 .cd-tbody {
   display: flex;
   flex-direction: column;
+}
+
+.cd-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 56px 0;
+  color: #6b7280;
+  font-size: 14px;
+
+  .el-icon {
+    font-size: 20px;
+  }
 }
 
 .cd-row {
@@ -741,7 +801,8 @@ onUnmounted(() => {
     font-size: 18px;
   }
 
-  &.icon-doc {
+  &.icon-doc,
+  &.icon-document {
     background: rgba(0, 47, 134, 0.08);
     color: var(--primary);
   }

@@ -7,8 +7,10 @@ type ApiEnvelope<T> = {
 };
 
 export interface ModelItem {
+  providerId: string;
+  modelId: string;
   id: string;
-  label: string;
+  name: string;
 }
 
 export async function listModels(): Promise<ModelItem[]> {

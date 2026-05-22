@@ -44,8 +44,8 @@ function extractUserDisplayText(normalized: Record<string, unknown> | string | n
 }
 
 /**
- * 将详情接口中的 assistant.content 还原为与 SSE reducer 一致的 Step[]，
- * 便于 AgentSteps / DocumentStep / SearchResultStep 等与流式结束后一致。
+ * 将详情接口中的 assistant.content 还原为 Step[]，
+ * 与流式处理结束后保持一致的展示结构。
  */
 export function buildAssistantStepsFromDetailContent(
   messageId: string,

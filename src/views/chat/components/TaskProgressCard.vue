@@ -74,12 +74,12 @@ interface Props {
 
 const props = withDefaults(defineProps<Props>(), {
   tasks: () => [
-    { id: '1', title: '分析当前 SSE 事件流是否支持示例图中的各个步骤展示', status: 'completed' },
-    { id: '2', title: '设计后端事件增强方案（推送更细粒度的步骤事件）', status: 'completed' },
-    { id: '3', title: '设计前端展示映射方案（将事件数据映射为 UI 卡片）', status: 'completed' },
-    { id: '4', title: '输出完整分析报告到 docs 目录', status: 'in_progress' },
-    { id: '5', title: '实施后端改造：新增 to_do_list 事件', status: 'pending' },
-    { id: '6', title: '实施后端改造：新增 Claw 调用事件', status: 'pending' },
+    { id: '1', title: '任务一', status: 'completed' },
+    { id: '2', title: '任务二', status: 'completed' },
+    { id: '3', title: '任务三', status: 'completed' },
+    { id: '4', title: '任务四', status: 'in_progress' },
+    { id: '5', title: '任务五', status: 'pending' },
+    { id: '6', title: '任务六', status: 'pending' },
   ],
 });
 

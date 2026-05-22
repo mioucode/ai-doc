@@ -34,7 +34,7 @@ export default defineConfig({
         secure: false,
       },
       '/api/agentloop': {
-        target: 'http://10.108.8.116:8000',
+        target: 'http://10.108.8.116:18091',
         changeOrigin: true,
         secure: false,
       },

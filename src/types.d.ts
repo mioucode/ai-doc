@@ -50,6 +50,10 @@ declare global {
     | 'tableCard'
     | 'text'
     | 'searchResult'
+    | 'result'
+    | 'planText'
+    | 'docReviewer'
+    | 'documentCard'
     | 'result';
 
   type StepContentType =
@@ -65,6 +69,7 @@ declare global {
     | 'tableCard'
     | 'text'
     | 'searchResult'
+    | 'docReviewer'
     | 'result';
 
   interface Step {

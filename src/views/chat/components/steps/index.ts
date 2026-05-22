@@ -1,5 +1,6 @@
 import CommonStep from './CommonStep.vue';
-import DocumentStep from './DocumentStep.vue';
+import DocumentOutputStep from './DocumentOutputStep.vue';
+import DocReviewerStep from './DocReviewerStep.vue';
 import PlainTextStep from './PlainTextStep.vue';
 import PlanTextStep from './PlanTextStep.vue';
 import ReportCardStep from './ReportCardStep.vue';
@@ -15,7 +16,9 @@ export const stepComponents: Record<string, any> = {
   planText: PlanTextStep,
   tool: ToolStep,
   template: TemplateStep,
-  document: DocumentStep,
+  document: DocumentOutputStep,
+  documentCard: DocumentOutputStep,
+  docReviewer: DocReviewerStep,
   reportCard: ReportCardStep,
   tableCard: TableCardStep,
   searchResult: SearchResultStep,

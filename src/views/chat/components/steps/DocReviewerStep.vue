@@ -1,15 +1,10 @@
 <template>
-  <div class="document-output-card">
-    <div class="doc-card-header">
-      <div class="doc-card-header-main">
-        <div class="doc-badge">
-          <span class="doc-badge-icon" aria-hidden="true">
-            <el-icon><Document /></el-icon>
-          </span>
-          <span>{{ badgeText }}</span>
-        </div>
-        <!-- <h2 class="doc-card-title" v-html="step.label || defaultTitle"></h2> -->
-      </div>
+  <div class="doc-reviewer-step">
+    <div class="doc-badge">
+      <span class="doc-badge-icon" aria-hidden="true">
+        <el-icon><Document /></el-icon>
+      </span>
+      <span>文档审核</span>
     </div>
 
     <div ref="previewPanelRef" class="doc-preview-panel">
@@ -18,8 +13,8 @@
 
     <div class="doc-card-footer">
       <span class="doc-footer-hint"></span>
-      <button v-if="showOpenEditor" type="button" class="doc-open-editor" @click="openEditor">
-        {{ openEditorText }}
+      <button type="button" class="doc-open-editor" @click="openEditor">
+        打开核对视图
         <el-icon class="doc-open-chevron"><ArrowRight /></el-icon>
       </button>
     </div>
@@ -32,27 +27,12 @@ import { ArrowRight, Document } from '@element-plus/icons-vue';
 import { computed, inject, nextTick, ref, watch } from 'vue';
 import { LINKED_EDITOR_KEY } from '../../linkedEditor';
 
-const props = withDefaults(
-  defineProps<{
-    step: Step;
-    animated?: boolean;
-    badgeText?: string;
-    defaultTitle?: string;
-    openEditorText?: string;
-    showOpenEditor?: boolean;
-  }>(),
-  {
-    animated: true,
-    badgeText: '文档输出',
-    defaultTitle: '生成文档',
-    openEditorText: '在右侧编辑器打开',
-    showOpenEditor: true,
-  },
-);
+const props = defineProps<{
+  step: Step;
+}>();
 
 const emit = defineEmits<{
   'streaming-complete': [];
-  'open-editor': [];
 }>();
 
 const linkedHost = inject(LINKED_EDITOR_KEY, null);
@@ -102,44 +82,18 @@ watch(
 );
 
 const openEditor = () => {
-  if (props.step.contentType === 'docReviewer') {
-    emit('open-editor');
-    return;
-  }
   if (!linkedHost) return;
-  const parsedBody = parse(bodyText.value || '');
-  const nextStep: Step = {
-    ...props.step,
-    content: {
-      ...(props.step.content && typeof props.step.content === 'object' ? (props.step.content as Record<string, unknown>) : {}),
-      body: parsedBody,
-    },
-  };
-  linkedHost.open(nextStep);
+  linkedHost.open(props.step);
 };
 </script>
 
 <style scoped lang="scss">
-.document-output-card {
+.doc-reviewer-step {
   width: 100%;
-  border-radius: 16px;
+  border-radius: 14px;
   border: 1px solid #e2e8f0;
   background: #ffffff;
-  box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
-  overflow: hidden;
-}
-
-.doc-card-header {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 18px 12px;
-}
-
-.doc-card-header-main {
-  flex: 1;
-  min-width: 0;
+  padding: 12px;
 }
 
 .doc-badge {
@@ -161,19 +115,9 @@ const openEditor = () => {
   display: inline-flex;
 }
 
-.doc-card-title {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 700;
-  color: #0f172a;
-  line-height: 1.45;
-  word-break: break-word;
-}
-
 .doc-preview-panel {
-  margin: 0 16px 16px;
   padding: 16px;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid #e8ecf1;
   max-height: 500px;
   overflow: auto;
@@ -196,8 +140,9 @@ const openEditor = () => {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 12px 18px 16px;
+  padding-top: 8px;
   border-top: 1px solid #f1f5f9;
+  margin-top: 12px;
 }
 
 .doc-footer-hint {

@@ -1,42 +1,40 @@
 <template>
   <div class="linked-editor-panel-inner">
-    <header class="linked-editor-head">
-      <div class="linked-editor-head-row">
-        <div class="linked-editor-meta">
-          <h2 class="linked-doc-title" v-html="docTitleDisplay"></h2>
+    <AuditResult v-if="isAuditStep" :step="step" @close="emit('close')" />
+    <template v-else>
+      <header class="linked-editor-head">
+        <div class="linked-editor-head-row">
+          <div class="linked-editor-meta">
+            <h2 class="linked-doc-title" v-html="docTitleDisplay"></h2>
+          </div>
+          <button type="button" class="linked-editor-close" title="关闭" aria-label="关闭" @click="emit('close')">
+            <el-icon><Close /></el-icon>
+          </button>
         </div>
-        <button
-          type="button"
-          class="linked-editor-close"
-          title="关闭"
-          aria-label="关闭"
-          @click="emit('close')"
-        >
-          <el-icon><Close /></el-icon>
-        </button>
-      </div>
-    </header>
+      </header>
 
-    <div class="linked-editor-scroll">
-      <div class="linked-editor-paper-wrap">
-        <TinymceDocEditor v-model="step.content.body" compact auto-grow />
+      <div class="linked-editor-scroll">
+        <div class="linked-editor-paper-wrap">
+          <TinymceDocEditor v-model="step.content.body" compact auto-grow />
+        </div>
       </div>
-    </div>
 
-    <footer class="linked-editor-foot">
-      <span class="linked-editor-demo-note"></span>
-      <div class="linked-editor-foot-actions">
-        <!-- <button type="button" class="btn-save-demo" @click="onSaveDemo">保存演示态</button> -->
-        <button type="button" class="btn-close-panel" @click="emit('close')">关闭</button>
-      </div>
-    </footer>
+      <footer class="linked-editor-foot">
+        <span class="linked-editor-demo-note"></span>
+        <div class="linked-editor-foot-actions">
+          <!-- <button type="button" class="btn-save-demo" @click="onSaveDemo">保存演示态</button> -->
+          <button type="button" class="btn-close-panel" @click="emit('close')">关闭</button>
+        </div>
+      </footer>
+    </template>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Close, Document } from '@element-plus/icons-vue';
-import { computed } from 'vue';
 import TinymceDocEditor from '@/components/rich-text/TinymceDocEditor.vue';
+import { Close } from '@element-plus/icons-vue';
+import { computed } from 'vue';
+import AuditResult from './AuditResult.vue';
 
 const props = defineProps<{
   step: Step;
@@ -45,6 +43,8 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
 }>();
+
+const isAuditStep = computed(() => props.step.contentType === 'docReviewer');
 
 /** 标题区去掉 .docx 后缀以贴近设计稿 */
 const docTitleDisplay = computed(() => {
@@ -121,7 +121,9 @@ $le-radius-pill: 20px;
   background: transparent;
   color: $le-text-secondary;
   cursor: pointer;
-  transition: background 0.15s ease, color 0.15s ease;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
 
   &:hover {
     background: rgba(0, 0, 0, 0.04);
@@ -218,7 +220,10 @@ $le-radius-pill: 20px;
   font-weight: 500;
   color: $le-primary;
   cursor: pointer;
-  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease,
+    background 0.15s ease;
 
   &:hover {
     border-color: $le-primary-hover;
@@ -239,7 +244,8 @@ $le-radius-pill: 20px;
   font-family: inherit;
   white-space: nowrap;
   box-shadow: 0 4px 12px rgba(0, 47, 134, 0.22);
-  transition: box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1),
+  transition:
+    box-shadow 0.18s cubic-bezier(0.22, 1, 0.36, 1),
     transform 0.18s cubic-bezier(0.22, 1, 0.36, 1);
 
   &:hover {

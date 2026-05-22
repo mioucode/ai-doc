@@ -1,33 +1,12 @@
 <template>
-  <div class="chat-shell" :class="{ 'editor-open': linkedEditorOpen && linkedEditorStep }">
+  <div class="chat-shell" :class="{ 'editor-open': linkedEditorOpen && linkedEditorStep, 'material-preview-open': materialPreviewOpen && activeMaterial }">
     <main class="main-content">
-      <div
-        ref="scrollContainerRef"
-        class="main-inner"
-        @scroll="handleScroll"
-        @wheel.passive="handleWheel"
-      >
-        <ConversationView
-          v-if="conversationVisible"
-          :messages="messages"
-          :visible="conversationVisible"
-          @copy="handleCopy"
-          @thumb-up="handleThumbUp"
-          @refresh="handleRefresh"
-          @step-rendered="handleStepRendered"
-          @steps-complete="handleStepsComplete"
-        />
+      <div ref="scrollContainerRef" class="main-inner" @scroll="handleScroll" @wheel.passive="handleWheel">
+        <ConversationView v-if="conversationVisible" :messages="messages" :visible="conversationVisible" @copy="handleCopy" @thumb-up="handleThumbUp" @refresh="handleRefresh" @step-rendered="handleStepRendered" @steps-complete="handleStepsComplete" />
         <WelcomeSection v-else @question-click="handleQuestionClick" />
       </div>
 
-      <DecisionActionBar
-        v-if="activeDecision"
-        :prompt="activeDecision.prompt"
-        :description="activeDecision.description"
-        :options="activeDecision.options"
-        @action="handleDecisionAction"
-        @close="closeDecisionBar"
-      />
+      <DecisionActionBar v-if="activeDecision" :prompt="activeDecision.prompt" :description="activeDecision.description" :options="activeDecision.options" @action="handleDecisionAction" @close="closeDecisionBar" />
       <div v-show="!activeDecision" class="input-stack">
         <div v-if="showTaskProgressCard" class="task-progress-anchor">
           <TaskProgressCard :tasks="activeTaskProgressTasks" @close="handleCloseTaskProgressCard" />
@@ -37,13 +16,17 @@
     </main>
 
     <Transition name="linked-editor">
-      <div
-        v-if="linkedEditorOpen && linkedEditorStep"
-        class="linked-editor-shell"
-        :key="linkedPanelKey"
-      >
+      <div v-if="linkedEditorOpen && linkedEditorStep" class="linked-editor-shell" :key="linkedPanelKey">
         <aside class="linked-editor-aside">
           <LinkedEditorPanel :step="linkedEditorStep" @close="closeLinkedEditor" />
+        </aside>
+      </div>
+    </Transition>
+
+    <Transition name="material-preview">
+      <div v-if="materialPreviewOpen && activeMaterial" class="material-preview-shell">
+        <aside class="material-preview-aside">
+          <MaterialPreviewPanel :material="activeMaterial" @close="closeMaterialPreview" />
         </aside>
       </div>
     </Transition>
@@ -68,18 +51,19 @@
  *
  * ── 路由 / 重置信号 ─────────────────────────────────────────
  *   "新对话"按钮不再创建本地草稿，而是 router.push('/chat') + sessionStore.requestReset()，
- *   后者通过 watch(resetSignal) 通知本视图清空 activeRealSessionId / messages / SSE。
+ *   后者通过 watch(resetSignal) 通知本视图清空 activeRealSessionId / messages。
  */
-import { getConversationDetail, runConversation, runNewConversation } from '@/api';
-import { createSSEConnection, type StreamEvent } from '@/api/chat';
+import { createConversation, getConversationDetail, getEventStreamUrl, runConversation } from '@/api';
+import { createSSEConnection, type StreamEvent } from '@/api/chat/sse';
 import { useSessionStore } from '@/stores/session';
-import { LINKED_EDITOR_KEY } from '@/views/chat/linkedEditor';
+import { LINKED_EDITOR_KEY, MATERIAL_PREVIEW_KEY, type MaterialItem } from '@/views/chat/linkedEditor';
 import { computed, nextTick, onUnmounted, provide, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import ChatInput from './components/ChatInput.vue';
 import ConversationView from './components/ConversationView.vue';
 import DecisionActionBar from './components/DecisionActionBar.vue';
 import LinkedEditorPanel from './components/LinkedEditorPanel.vue';
+import MaterialPreviewPanel from './components/MaterialPreviewPanel.vue';
 import TaskProgressCard, { type TaskItem } from './components/TaskProgressCard.vue';
 import WelcomeSection from './components/WelcomeSection.vue';
 import { mapBackendMessages } from './messageModel';
@@ -137,7 +121,7 @@ const currentSessionId = computed(() => {
 
 /**
  * 当前 /chat scratch 关联的真实 conversationId。
- *   - 用户首次发送、SSE 拿到 conversationId 后写入；
+ *   - 用户首次发送、后端返回 conversationId 后写入；
  *   - 后续在同一 /chat 上发送时，作为续写的 conversationId 给 runConversation；
  *   - 用户点击 Sidebar 上"该 scratch 对应的历史项"时，URL 变成 /chat/:id，
  *     loadSessionFromRoute 会识别 sessionId === activeRealSessionId 直接复用内存状态；
@@ -171,6 +155,27 @@ provide(LINKED_EDITOR_KEY, {
   isOpen: linkedEditorOpen,
 });
 
+// ---------- 素材预览面板（右侧抽屉）----------
+const materialPreviewOpen = ref(false);
+const activeMaterial = ref<MaterialItem | null>(null);
+
+const openMaterialPreview = (material: MaterialItem) => {
+  activeMaterial.value = material;
+  materialPreviewOpen.value = true;
+};
+
+const closeMaterialPreview = () => {
+  materialPreviewOpen.value = false;
+  activeMaterial.value = null;
+};
+
+provide(MATERIAL_PREVIEW_KEY, {
+  open: openMaterialPreview,
+  close: closeMaterialPreview,
+  activeMaterial: activeMaterial,
+  isOpen: materialPreviewOpen,
+});
+
 // ---------- 主消息流 ----------
 const conversationVisible = ref(false);
 /** 页面级唯一消息源：子组件只消费，不二次维护镜像状态。 */
@@ -191,23 +196,9 @@ const activeTaskProgressTasks = computed<TaskItem[]>(() => {
 });
 
 const taskProgressDismissed = ref(false);
-const showTaskProgressCard = computed(
-  () =>
-    !activeDecision.value &&
-    activeTaskProgressTasks.value.length > 0 &&
-    !taskProgressDismissed.value
-);
+const showTaskProgressCard = computed(() => !activeDecision.value && activeTaskProgressTasks.value.length > 0 && !taskProgressDismissed.value);
 
-const {
-  scrollContainerRef,
-  autoScroll,
-  isRestoringHistory,
-  isSwitchingSession,
-  canAutoScroll,
-  scrollToBottom,
-  handleScroll,
-  handleWheel,
-} = useChatScrollController();
+const { scrollContainerRef, autoScroll, isRestoringHistory, isSwitchingSession, canAutoScroll, scrollToBottom, handleScroll, handleWheel } = useChatScrollController();
 const forceScrollBottom = () => scrollToBottom('auto', true);
 const forceLayoutContentToBottom = () => {
   const run = () => {
@@ -234,7 +225,7 @@ watch(
       return;
     }
     if (canAutoScroll()) scrollToBottom('smooth');
-  }
+  },
 );
 
 watch(
@@ -243,7 +234,7 @@ watch(
   },
   () => {
     if (canAutoScroll()) scrollToBottom('smooth');
-  }
+  },
 );
 
 watch(
@@ -254,7 +245,7 @@ watch(
     if (isRestoringHistory.value || isSwitchingSession.value) return;
     autoScroll.value = true;
     if (canAutoScroll()) scrollToBottom('smooth');
-  }
+  },
 );
 
 const inputRef = ref<InstanceType<typeof ChatInput> | null>(null);
@@ -281,7 +272,7 @@ const loadSessionFromRoute = async () => {
   const sessionId = currentSessionId.value;
 
   // 特例：URL 切到的正是当前 scratch 关联的真实会话 ——
-  // 内存中的 messages / SSE 都是有效的，仅做"URL 同步"，不重新拉详情、不打断流式。
+  // 内存中的 messages 都是有效的，仅做"URL 同步"，不重新拉详情。
   if (sessionId && sessionId === activeRealSessionId.value && messages.value.length > 0) {
     // URL 已带上 id，高亮以路由为准，避免与 scratch 标记双轨。
     sessionStore.setScratchActiveSession(null);
@@ -342,7 +333,7 @@ watch(
     activeRealSessionId.value = null;
     messages.value = [];
     conversationVisible.value = false;
-  }
+  },
 );
 
 // ---------- 用户操作处理 ----------
@@ -360,12 +351,7 @@ const handleSend = async (data: SendData) => {
   processAssistantResponse(data);
 };
 
-const handleDecisionAction = (option: {
-  id: string;
-  label: string;
-  sendText?: string;
-  text?: string;
-}) => {
+const handleDecisionAction = (option: { id: string; label: string; sendText?: string; text?: string }) => {
   activeDecision.value = null;
   if (option.sendText) {
     handleSend({ text: option.sendText, model: 'Qwen 3.5', claw: null });
@@ -398,18 +384,14 @@ const handleRefresh = (message: ChatMessage) => {
   console.log('重新生成:', message);
 };
 
-const handleStepRendered = (_payload: {
-  messageId: string;
-  stepKey: string;
-  phase: 'revealed';
-}) => {
+const handleStepRendered = (_payload: { messageId: string; stepKey: string; phase: 'revealed' }) => {
   if (autoScroll.value && !isSwitchingSession.value) scrollToBottom();
 };
 
 const handleStepsComplete = (payload: { messageId: string; phase: 'all_completed' }) => {
-  // 注意："步骤都已渲染"不等于"SSE 已结束"。
-  // 真实结束只应由 message_stop / onDone / onError 驱动，
-  // 否则会在检索完成到写作开始的等待期提前关闭 streaming，
+  // 注意："步骤都已渲染"不等于"响应已结束"。
+  // 真实结束只应由后端响应完成驱动，
+  // 否则会在检索完成到写作开始的等待期提前关闭，
   // 导致 AgentSteps 的"正在思考中"提示消失。
   void payload;
 };
@@ -449,80 +431,80 @@ const processAssistantResponse = (data: SendData) => {
     streaming: true,
   });
 
-  // 决定走哪个 endpoint：
+  // 当前会话 ID：
   //   - URL 上有 sessionId（用户从历史会话进来）→ 用 URL 上的 id；
   //   - 否则若 scratch 已经有真实 id（同一 /chat 上的非首条消息）→ 用 scratch id；
-  //   - 都没有则视为首次发问，走 runNewConversation。
-  const targetId = currentSessionId.value || activeRealSessionId.value;
+  //   - 都没有则视为首次发问，需要先创建会话。
+  let conversationId = currentSessionId.value || activeRealSessionId.value;
 
   const payload = {
     content: data.text,
     model: data.model,
     skill: data.skill || data.claw || null,
+    attachments: [],
+    resume_from_waiting: false,
+    selected_option: null,
+    prompt_menu_input: null,
   };
 
   /**
    * 运行会话并建立 SSE 连接。
-   * 首次发送（没有 targetId）时拿到真实 conversationId 后：
+   * 首次发送（没有 conversationId）时：
+   *   - 先调用 createConversation 创建会话；
    *   - 写入 activeRealSessionId 让后续消息走续写；
    *   - 把会话登记到 Sidebar 历史列表；
    *   - **不**修改 URL，让 /chat 在用户离开前一直保持纯净。
    */
   const connect = async () => {
     try {
-      const runRes = targetId
-        ? await runConversation(targetId, payload)
-        : await runNewConversation(payload);
+      if (!conversationId) {
+        const createRes = await createConversation({
+          title: data.text.trim().slice(0, 20) || '新对话',
+        });
+        conversationId = createRes.id;
+        activeRealSessionId.value = conversationId;
+
+        const ts = new Date().toISOString();
+        sessionStore.addSession({
+          id: conversationId,
+          title: createRes.title,
+          pinned: false,
+          createdAt: ts,
+          updatedAt: ts,
+        });
+
+        if (!currentSessionId.value) {
+          sessionStore.setScratchActiveSession(conversationId);
+        }
+      }
+
+      const runRes = await runConversation(conversationId, payload);
 
       const titleFromRun = runRes.conversationTitle?.trim() || '';
       if (titleFromRun) {
         sessionStore.updateSessionTitleInList(runRes.conversationId, titleFromRun);
       }
 
-      if (!targetId) {
-        activeRealSessionId.value = runRes.conversationId;
-        const ts = new Date().toISOString();
-        const listTitle =
-          titleFromRun || data.text.trim().slice(0, 20) || '新对话';
-        sessionStore.addSession({
-          id: runRes.conversationId,
-          title: listTitle,
-          pinned: false,
-          createdAt: ts,
-          updatedAt: ts,
-        });
-        if (!currentSessionId.value) {
-          sessionStore.setScratchActiveSession(runRes.conversationId);
-        }
-      }
+      const streamUrl = runRes.streamUrl || getEventStreamUrl(conversationId, runRes.runId);
 
-      // 每条 assistant 消息绑定一个 reducer，保证同一轮事件只修改本消息 steps。
       const currentMsg = messages.value[assistantMessageIndex];
       const stepList = currentMsg?.steps || [];
       const reducer = createSseStepReducer(stepList);
 
       activeStream.value?.close();
-      activeStream.value = createSSEConnection(runRes.streamUrl, {
+      activeStream.value = createSSEConnection(streamUrl, {
         onEvent: (event: StreamEvent) => {
-          if (event.type === 'message_stop') {
-            reducer.apply(event);
-            const message = messages.value[assistantMessageIndex];
-            if (message) message.streaming = false;
-            forceScrollBottom();
-            return;
-          }
           reducer.apply(event);
+          if (currentMsg) {
+            currentMsg.steps = [...stepList];
+          }
           forceScrollBottom();
         },
         onDone: () => {
-          // 流结束时只做两件事：
-          //   1. 兜底把任务卡里残留的 in_progress 任务置 completed（reducer 内部处理）；
-          //   2. 关闭消息的 streaming 标记。
-          // 不再回拉 getConversationDetail —— 文档正文已由 documentOutput step 渲染。
-          const currentMsg = messages.value[assistantMessageIndex];
-          if (!currentMsg) return;
-          reducer.apply({ type: 'message_stop' });
-          currentMsg.streaming = false;
+          const msg = messages.value[assistantMessageIndex];
+          if (msg) {
+            msg.streaming = false;
+          }
           forceScrollBottom();
         },
         onError: (error: Error) => {
@@ -564,7 +546,7 @@ watch(
     cache[sessionId] = list;
     writeLocalHistoryCache(cache);
   },
-  { deep: true }
+  { deep: true },
 );
 </script>
 
@@ -581,6 +563,20 @@ watch(
   position: relative;
 
   &.editor-open {
+    .main-content {
+      width: 44.7%;
+    }
+
+    :deep(.bottom-area) .bottom-area-inner {
+      padding: 20px 16px;
+    }
+
+    :deep(.task-progress-anchor) {
+      padding: 0 16px;
+    }
+  }
+
+  &.material-preview-open {
     .main-content {
       width: 44.7%;
     }
@@ -668,6 +664,56 @@ watch(
 
 .linked-editor-enter-to .linked-editor-aside,
 .linked-editor-leave-from .linked-editor-aside {
+  transform: translateX(0);
+}
+
+.material-preview-shell {
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+  z-index: 10;
+}
+
+.material-preview-aside {
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: #ffffff;
+  border-radius: 24px;
+  box-shadow: -10px 0 36px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+}
+
+.material-preview-enter-active,
+.material-preview-leave-active {
+  transition:
+    flex-basis 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+    max-width 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+    width 0.34s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.28s ease;
+}
+
+.material-preview-enter-active .material-preview-aside,
+.material-preview-leave-active .material-preview-aside {
+  transition: transform 0.34s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.material-preview-enter-from,
+.material-preview-leave-to {
+  flex-basis: 0 !important;
+  width: 0 !important;
+  max-width: 0 !important;
+  border-left-width: 0;
+  opacity: 0;
+}
+
+.material-preview-enter-from .material-preview-aside,
+.material-preview-leave-to .material-preview-aside {
+  transform: translateX(100%);
+}
+
+.material-preview-enter-to .material-preview-aside,
+.material-preview-leave-from .material-preview-aside {
   transform: translateX(0);
 }
 
